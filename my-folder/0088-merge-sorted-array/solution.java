@@ -6,12 +6,13 @@ class Solution {
         while(i>=0 && j>=0){
             if(i>=0 && nums1[i]>nums2[j]){
                 nums1[length]=nums1[i];
+                length--;
                 i--;
             }else{
                 nums1[length]=nums2[j];
+                length--;
                 j--;
             }
-            length--;
         }
         while(j>=0){
             nums1[length]=nums2[j];
