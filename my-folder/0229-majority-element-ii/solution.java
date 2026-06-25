@@ -1,25 +1,41 @@
+import java.util.*;
 class Solution {
     public List<Integer> majorityElement(int[] nums) {
-        int c1 = 0, c2 = 0;
-        Integer n1 = null, n2 = null;
-
-        for (int x : nums) {
-            if (n1 != null && x == n1) c1++;
-            else if (n2 != null && x == n2) c2++;
-            else if (c1 == 0) { n1 = x; c1 = 1; }
-            else if (c2 == 0) { n2 = x; c2 = 1; }
-            else { c1--; c2--; }
+        int count1=0;
+        int count2=0;
+        int ele1=-1;
+        int ele2=-1;
+        int c1=0;
+        int c2=0;
+        int len=nums.length;
+        int deslen=len/3;
+        List<Integer> result=new ArrayList<>();
+        for(int i=0;i<nums.length;i++){
+            int ele=nums[i];
+            if(ele1==ele){
+                count1++;
+            }else if(ele2==ele){
+                count2++;
+            }else if(count1==0){
+                ele1=ele;
+                count1=1;
+            }else if(count2==0){
+                ele2=ele;
+                count2=1;
+            }else{
+                count1--;
+                count2--;
+            }
         }
-
-        c1 = c2 = 0;
-        for (int x : nums) {
-            if (x == n1) c1++;
-            else if (x == n2) c2++;
+        for(int num:nums){
+            if(num==ele1){
+                c1++;
+            }else if(num==ele2){
+                c2++;
+            }
         }
-
-        List<Integer> res = new ArrayList<>();
-        if (c1 > nums.length / 3) res.add(n1);
-        if (c2 > nums.length / 3) res.add(n2);
-        return res;
+        if(c1>deslen)result.add(ele1);
+        if(c2>deslen)result.add(ele2);
+        return result;
     }
 }
