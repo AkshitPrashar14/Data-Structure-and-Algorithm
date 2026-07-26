@@ -1,18 +1,129 @@
-name: LeetCode Synchronizer
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 8 * * 6"
+import os
+import time
+import requests
+import subprocess
+from dotenv import load_dotenv
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Run LeetCode Synchronizer
-        uses: dos-m0nk3y/LeetCode-Synchronizer@v1.1.0
-        with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          LEETCODE_SESSION: ${{ secrets.LEETCODE_SESSION }}
-          LEETCODE_CSRF_TOKEN: ${{ secrets.LEETCODE_CSRF_TOKEN }}
+load_dotenv()
+
+SESSION = os.getenv("LEETCODE_SESSION")
+CSRFTOKEN = os.getenv("LEETCODE_CSRFTOKEN")
+
+if not SESSION or not CSRFTOKEN:
+    print("ERROR: Please set LEETCODE_SESSION and LEETCODE_CSRFTOKEN in your .env file.")
+    exit(1)
+
+API_URL = "https://leetcode.com/api/submissions/"
+
+EXTENSIONS = {
+    "python": ".py", "python3": ".py", "c": ".c", "cpp": ".cpp", "csharp": ".cs",
+    "java": ".java", "javascript": ".js", "ruby": ".rb", "swift": ".swift",
+    "golang": ".go", "scala": ".scala", "kotlin": ".kt", "rust": ".rs",
+    "php": ".php", "typescript": ".ts", "racket": ".rkt", "erlang": ".erl",
+    "elixir": ".ex", "dart": ".dart", "mysql": ".sql", "mssql": ".sql", "oraclesql": ".sql"
+}
+
+def get_all_accepted_submissions():
+    print("Fetching submissions from LeetCode. This might take a while if you have many submissions...")
+    session = requests.Session()
+    session.cookies.set("LEETCODE_SESSION", SESSION)
+    session.cookies.set("csrftoken", CSRFTOKEN)
+    
+    offset = 0
+    limit = 20
+    has_next = True
+    accepted_submissions = []
+    
+    while has_next:
+        print(f"Fetching submissions {offset} to {offset+limit}...")
+        url = f"{API_URL}?offset={offset}&limit={limit}"
+        response = session.get(url)
+        if response.status_code != 200:
+            print(f"Error fetching data: HTTP {response.status_code}")
+            print(response.text)
+            print("Please ensure your LEETCODE_SESSION and CSRFTOKEN are correct and not expired.")
+            break
+            
+        data = response.json()
+        submissions = data.get("submissions_dump", [])
+        
+        for sub in submissions:
+            if sub.get("status_display") == "Accepted":
+                accepted_submissions.append(sub)
+                
+        has_next = data.get("has_next", False)
+        offset += limit
+        time.sleep(1.5)  # Sleep to prevent rate limiting
+        
+    print(f"\nFound {len(accepted_submissions)} total accepted submissions.")
+    return accepted_submissions
+
+def init_git():
+    if not os.path.exists(".git"):
+        print("Initializing Git repository...")
+        subprocess.run(["git", "init"], check=True)
+
+def commit_submission(sub):
+    title = sub.get("title", "Unknown")
+    title_slug = sub.get("title_slug", "unknown-problem")
+    lang = sub.get("lang", "txt")
+    code = sub.get("code", "")
+    timestamp = sub.get("timestamp")
+    
+    ext = EXTENSIONS.get(lang, f".{lang}")
+    
+    if not os.path.exists(title_slug):
+        os.makedirs(title_slug)
+        
+    file_path = os.path.join(title_slug, f"solution{ext}")
+    
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(code)
+        
+    # Stage the file
+    subprocess.run(["git", "add", file_path], check=True)
+    
+    # Check if there are changes to commit (prevents empty commits if running script multiple times)
+    status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
+    if not status.stdout.strip():
+        return False
+        
+    # Git commit with backdated timestamp
+    env = os.environ.copy()
+    env["GIT_AUTHOR_DATE"] = f"{timestamp} +0000"
+    env["GIT_COMMITTER_DATE"] = f"{timestamp} +0000"
+    
+    commit_msg = f"Accepted: {title} ({lang})"
+    subprocess.run(["git", "commit", "-m", commit_msg], env=env, check=True)
+    return True
+
+def main():
+    init_git()
+    submissions = get_all_accepted_submissions()
+    
+    if not submissions:
+        print("No accepted submissions found or failed to fetch.")
+        return
+        
+    # Sort from oldest to newest to preserve natural timeline
+    submissions.sort(key=lambda x: x.get("timestamp", 0))
+    
+    print("\nStarting commit process...")
+    committed_count = 0
+    
+    for i, sub in enumerate(submissions):
+        if commit_submission(sub):
+            committed_count += 1
+            print(f"[{i+1}/{len(submissions)}] Committed: {sub.get('title')} ({sub.get('lang')})")
+        else:
+            print(f"[{i+1}/{len(submissions)}] Skipped (already up to date): {sub.get('title')}")
+            
+    print(f"\nDone! Successfully created {committed_count} new commits.")
+    print("\nNext Steps:")
+    print("1. Go to GitHub and create a new empty repository.")
+    print("2. Run: git remote add origin <your-github-repo-url>")
+    print("3. Run: git branch -M main")
+    print("4. Run: git push -u origin main")
+
+if __name__ == "__main__":
+    main()
